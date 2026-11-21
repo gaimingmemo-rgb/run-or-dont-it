@@ -4,10 +4,10 @@
 #  Owner-authorized build for the Zartos Studios network.
 # ============================================================
 from ursina import *
-from ursina.lights import AmbientLight
 
 import texture_gen
 from audio_manager import AudioManager
+from helpers import LightSystem
 from maps import build_map, MAP_INFO
 from nextbot import Nextbot
 from player import Player
@@ -22,7 +22,7 @@ class Game(Entity):
         self.world = None
         self.player = None
         self.nextbot = None
-        self.lights = []
+        self.lights = LightSystem()
         self.hide_spots = []
         self.map_meta = None
         self.survival_time = 0.0
@@ -38,11 +38,7 @@ class Game(Entity):
         window.color = color.black
         scene.fog_color = color.rgb(4, 4, 8)
         scene.fog_density = (10, 70)
-
-        try:
-            self.ambient = AmbientLight(color=color.rgb(14, 14, 20))
-        except Exception:
-            self.ambient = None
+        self.lights.ambient(color.rgb(14, 14, 20))
 
         # keep the UI readable no matter how lighting behaves
         try:
@@ -55,16 +51,8 @@ class Game(Entity):
 
     # ---------------- lifecycle ----------------
     def cleanup(self):
-        import builtins
-        base = getattr(builtins, 'base', None)
-        for l in self.lights:
-            for root in (getattr(base, 'render', None), scene):
-                try:
-                    if root is not None and l is not None:
-                        root.clearLight(l)
-                except Exception:
-                    pass
-        self.lights = []
+        self.lights.clear_map_lights()
+        self.lights.ambient(color.rgb(14, 14, 20))
 
         if self.player is not None:
             camera.parent = scene
@@ -113,8 +101,8 @@ class Game(Entity):
     def to_menu(self):
         self.cleanup()
         self.state = 'menu'
-        scene.fog_density = (10, 70)
         mouse.locked = False
+        scene.fog_density = (10, 70)
         self.ui.build_menu()
 
     def resume(self):
@@ -176,7 +164,7 @@ class Game(Entity):
                     em['pad'].color = color.rgb(60, 220, 90)
                     em['beam'].color = color.rgb(80, 255, 120)
                     if em['light'] is not None:
-                        em['light'].color = color.rgb(60, 220, 90)
+                        self.lights.set_color(em['light'], color.rgb(60, 220, 90))
                 self.ui.message('THE EXIT IS OPEN. GO.', 4)
 
             p, nb = self.player, self.nextbot

@@ -5,13 +5,13 @@
 #  Every prop is multi-part: desks have legs + chairs, lockers have
 #  vents, freezers have glass doors, trees have bark + canopy layers,
 #  cars have cabins/wheels/headlights. Textures are generated PNGs.
+#  Lights use the safe raw Panda3D LightSystem (no crash on cleanup).
 # ============================================================
 import random as _r
 
 from ursina import *
-from ursina.lights import PointLight
 
-from helpers import load_tex, tune_pointlight
+from helpers import load_tex
 
 MAP_INFO = {
     'school': {'label': 'SCHOOL'},
@@ -38,18 +38,14 @@ def _box(parent, pos, scale, col, collider=True):
 
 
 def _light(game, parent, pos, col):
-    l = PointLight(parent=parent, position=pos, color=col)
-    tune_pointlight(l)
-    game.lights.append(l)
-    return l
+    return game.lights.add_point(parent, pos, col)
 
 
 class FlickerLight(Entity):
     def __init__(self, game, parent, pos, col, flicker=True, lamp_scale=(0.9, 0.07, 0.9)):
         super().__init__(parent=parent, position=pos)
-        self.pl = PointLight(parent=self, color=col)
-        tune_pointlight(self.pl)
-        game.lights.append(self.pl)
+        self.pl = game.lights.add_point(self, (0, 0, 0), col)
+        self.game = game
         self.base_col = col
         self.lamp = Entity(parent=self, model='cube', scale=lamp_scale,
                            color=col, texture=load_tex('metal'), unlit=True)
@@ -63,7 +59,8 @@ class FlickerLight(Entity):
         self.t -= time.dt
         if self.t <= 0:
             self.on = _r.random() > 0.3
-            self.pl.enabled = self.on
+            if self.pl is not None:
+                self.game.lights.set_color(self.pl, self.base_col if self.on else color.rgb(20, 20, 18))
             self.lamp.color = self.base_col if self.on else color.rgb(35, 35, 32)
             self.t = _r.uniform(0.06, 0.8)
 
@@ -171,14 +168,14 @@ def _shelf(parent, x, z, rot_y, length, shelves=4):
     return s
 
 
-def _freezer(parent, x, z, rot_y):
+def _freezer(game, parent, x, z, rot_y):
     metal = load_tex('metal')
     f = Entity(parent=parent, position=(x, 0, z), rotation_y=rot_y)
     _tex_box(f, (0, 1.15, -0.15), (5.0, 2.3, 3.7), color.rgb(180, 190, 205), metal)
     for s in (-1, 1):                              # glass doors
         _tex_box(f, (s * 1.25, 1.15, 1.72), (2.3, 2.1, 0.08),
                  color.rgb(120, 150, 180), None, False)
-    _light(f, None if False else f, (0, 2.05, 1.5), color.rgb(120, 170, 220))
+    _light(game, f, (0, 2.05, 1.5), color.rgb(120, 170, 220))   # interior glow
     return f
 
 
@@ -223,18 +220,19 @@ def _car(parent, x, z, rot_y, rnd):
 
 def _street_lamp(game, parent, x, z, rot_y, flicker):
     metal = load_tex('metal')
+    conc = load_tex('concrete')
     l = Entity(parent=parent, position=(x, 0, z), rotation_y=rot_y)
-    _tex_box(l, (0, 0.15, 0), (0.5, 0.3, 0.5), color.rgb(45, 45, 50), concrete_tex := load_tex('concrete'))
+    _tex_box(l, (0, 0.15, 0), (0.5, 0.3, 0.5), color.rgb(45, 45, 50), conc)
     _tex_box(l, (0, 2.75, 0), (0.22, 5.5, 0.22), color.rgb(50, 50, 56), metal)
     _tex_box(l, (0, 5.35, 0), (0.16, 0.4, 0.16), color.rgb(50, 50, 56), metal)
     _tex_box(l, (0.75, 5.5, 0), (1.5, 0.12, 0.12), color.rgb(50, 50, 56), metal)
     _tex_box(l, (1.4, 5.38, 0), (0.7, 0.10, 0.35), color.rgb(215, 185, 125), None, False)
+    fl = None
     if flicker:
         fl = FlickerLight(game, l, (1.4, 5.2, 0), color.rgb(215, 185, 125),
                           flicker=True, lamp_scale=(0.6, 0.08, 0.32))
     else:
         _light(game, l, (1.4, 5.0, 0), color.rgb(185, 160, 105))
-        fl = None
     return l, fl
 
 
@@ -330,12 +328,9 @@ def _school(game, parent):
                 # basketball hoop
                 hoop = Entity(parent=parent, position=(cx, 0, s * 36))
                 _box(hoop, (0, 3.05, 0), (0.1, 0.1, 0.1), color.rgb(200, 80, 40))
-                _box(hoop, (0, 3.05, 0.6), (1.8, 1.05, 0.10), color.rgb(160, 60, 30),
-                     collider=False)                      # backboard
-                _box(hoop, (0, 2.9, 0.75), (1.1, 0.7, 0.05), color.rgb(220, 220, 230),
-                     collider=False)                      # white square
-                _box(hoop, (0, 2.95, 0.42), (1.2, 0.06, 0.35), color.rgb(220, 100, 60),
-                     collider=False)                     # rim
+                _box(hoop, (0, 3.05, 0.6), (1.8, 1.05, 0.10), color.rgb(160, 60, 30), False)
+                _box(hoop, (0, 2.9, 0.75), (1.1, 0.7, 0.05), color.rgb(220, 220, 230), False)
+                _box(hoop, (0, 2.95, 0.42), (1.2, 0.06, 0.35), color.rgb(220, 100, 60), False)
                 continue
             if cx == 45 and s == -1:                      # CAFETERIA
                 for i in range(3):
@@ -351,14 +346,12 @@ def _school(game, parent):
             # CLASSROOM
             _blackboard(parent, cx, s * 36.6, 180 if s > 0 else 0, 6)
             _teacher_desk(parent, cx + 3.5, s * 32, 0)
-            rnd_desk = _r.Random(int(cx * 3 + s))
             for r_ in range(3):
                 for c_ in range(4):
                     _desk(parent, cx - 6 + c_ * 4, s * (11 + r_ * 5.5),
                           180 if s > 0 else 0)
 
     # lockers along the corridor
-    locker_tex = load_tex('locker')
     for s in (-1, 1):
         for lx in range(-54, 55, 8):
             if any(abs(lx - c) < 5 for c in room_centers):
@@ -423,7 +416,7 @@ def _store(game, parent):
 
     # freezer corner (west) - glass doors + glow inside
     for fz in (-24, -17, -10):
-        _freezer(parent, -43, fz, 90)
+        _freezer(game, parent, -43, fz, 90)
 
     # checkout area (south-east)
     for i in range(3):
@@ -486,10 +479,9 @@ def _city(game, parent):
         for bz in (-50, 0, 50):
             _tex_box(parent, (bx, 0.06, bz), (36, 0.12, 36), color.rgb(255, 255, 255), conc, False, 6)
 
-    # crosswalks on the central plaza streets
-    for cx in (-12.5, 12.5):
-        _tex_box(parent, (cx, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
-        _tex_box(parent, (cx, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
+    # crosswalks around the central plaza
+    _tex_box(parent, (-12.5, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
+    _tex_box(parent, (12.5, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
     _tex_box(parent, (0, 0.02, -12.5), (24, 0.05, 1.8), color.rgb(220, 215, 200), conc, False)
     _tex_box(parent, (0, 0.02, 12.5), (24, 0.05, 1.8), color.rgb(220, 215, 200), conc, False)
 
@@ -510,20 +502,20 @@ def _city(game, parent):
                              color.rgb(255, 255, 255), f, True, max(1, int(h / 6)))
                 # rooftop details
                 _tex_box(parent, (bx + ox, h + 0.4, bz + oz), (w * 0.4, 0.8, d * 0.4),
-                         color.rgb(60, 60, 64), conc, False)              # roof box
+                         color.rgb(60, 60, 64), conc, False)
                 _box(parent, (bx + ox + w / 4, h + 1.8, bz + oz - d / 4),
-                     (0.3, 2.5, 0.3), color.rgb(70, 70, 76))                # antenna
+                     (0.3, 2.5, 0.3), color.rgb(70, 70, 76))
                 _box(parent, (bx + ox + w / 4, h + 3.1, bz + oz - d / 4),
-                     (0.1, 0.1, 0.1), color.rgb(255, 60, 60), False)        # beacon
+                     (0.1, 0.1, 0.1), color.rgb(255, 60, 60), False)
 
     # plaza fountain (exit centerpiece)
     fz = Entity(parent=parent, position=(0, 0, 0))
     _tex_box(fz, (0, 0.3, 0), (5, 0.6, 5), color.rgb(255, 255, 255), conc)
-    _tex_box(fz, (0, 0.65, 0), (4, 0.5, 4), color.rgb(40, 60, 80), None, False)   # water
+    _tex_box(fz, (0, 0.65, 0), (4, 0.5, 4), color.rgb(40, 60, 80), None, False)
     _tex_box(fz, (0, 1.2, 0), (1, 1.5, 1), color.rgb(255, 255, 255), conc, False)
     _tex_box(fz, (0, 2.05, 0), (2, 0.2, 2), color.rgb(255, 255, 255), conc, False)
 
-    # trees around the plaza and streets
+    # trees
     tree_pts = [(-13, 13), (13, 13), (-13, -13), (13, -13),
                 (-38, 13), (38, -13), (-13, 38), (13, -38),
                 (38, 38), (-38, -38), (62, 0), (-62, 0), (0, 62), (0, -62)]
