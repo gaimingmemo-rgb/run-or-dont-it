@@ -4,11 +4,22 @@
 # ============================================================
 from ursina import *
 
+from helpers import load_tex
 from maps import MAP_INFO
 
 
 def _fmt(t):
     return f'{int(t // 60):02d}:{int(t % 60):02d}'
+
+
+def _face(parent, position, scale, tint=None):
+    """The generated nextbot face as a UI element."""
+    e = Entity(parent=parent, model='quad', position=position, scale=scale,
+               color=tint or color.rgb(255, 255, 255))
+    tex = load_tex('nextbot_face')
+    if tex is not None:
+        e.texture = tex
+    return e
 
 
 class GameUI:
@@ -43,13 +54,25 @@ class GameUI:
     def build_menu(self):
         self._hide_all()
         root = self.menu_root = Entity(parent=camera.ui)
+        # dim textured backdrop
+        bg = Entity(parent=root, model='quad', scale=(3, 2), z=1,
+                    color=color.rgb(8, 8, 12))
+        bt = load_tex('brick')
+        if bt is not None:
+            bg.texture = bt
+            try:
+                bg.texture_scale = (8, 6)
+            except Exception:
+                pass
+        # the face, watching you from the menu
+        _face(root, (0, 0.07), (0.42, 0.42))
         Text('RUN OR DONT IT', parent=root, y=0.34, origin=(0, 0), scale=2.8,
              color=color.rgb(215, 35, 35))
         Text('a Zartos Studios network production', parent=root, y=0.27,
              origin=(0, 0), scale=0.85, color=color.rgb(150, 150, 160))
         for i, (key, info) in enumerate(MAP_INFO.items()):
             b = Button(parent=root, text=info['label'], scale=(0.42, 0.075),
-                       position=(0, 0.08 - i * 0.11), color=color.rgb(72, 22, 22))
+                       position=(0, -0.05 - i * 0.11), color=color.rgb(72, 22, 22))
             b.on_click = Func(self.game.start, key)
         Text('WASD move | SHIFT sprint | SPACE jump | C duck | CTRL slide | '
              'Q/E peek | F hide | T or Right-Click flashlight | ESC pause',
@@ -135,14 +158,8 @@ class GameUI:
         self._hide_all()
         root = self.death_root = Entity(parent=camera.ui)
         Entity(parent=root, model='quad', scale=(3, 1.2), color=color.rgba(120, 0, 0, 150))
-        face = Entity(parent=root, model='quad', scale=(1.5, 1.5), position=(0, 0.06),
-                      color=color.rgb(8, 8, 10))
-        Entity(parent=face, model='circle', color=color.rgb(255, 40, 40),
-               position=(-0.17, 0.18, -0.01), scale=(0.16, 0.075))
-        Entity(parent=face, model='circle', color=color.rgb(255, 40, 40),
-               position=(0.17, 0.18, -0.01), scale=(0.16, 0.075))
-        Entity(parent=face, model='circle', color=color.rgb(240, 240, 240),
-               position=(0, -0.2, -0.01), scale=(0.62, 0.2))
+        # ITS face fills the screen, dark and huge
+        _face(root, (0, 0.06), (1.6, 1.6))
         Text('IT CAUGHT YOU', parent=root, y=-0.32, origin=(0, 0), scale=2.2,
              color=color.rgb(255, 60, 60))
         b1 = Button(parent=root, text='RUN AGAIN', scale=(0.36, 0.07),

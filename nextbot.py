@@ -7,7 +7,9 @@ import random
 
 from ursina import *
 
-from helpers import tune_pointlight
+from helpers import load_tex, tune_pointlight
+
+FACE_TEX = 'nextbot_face'
 
 
 def _rot_y(v, deg):
@@ -17,7 +19,8 @@ def _rot_y(v, deg):
 
 
 class Nextbot(Entity):
-    """A billboard nextbot: it hunts, it searches, it gets faster forever."""
+    """A billboard nextbot with a generated horror face: it hunts, it searches,
+    it gets faster forever."""
 
     def __init__(self, game, position=(0, 0, 0)):
         super().__init__(position=position)
@@ -35,15 +38,23 @@ class Nextbot(Entity):
         self.next_scream = 0.0
 
         self.root = Entity(parent=self)
+        tex = load_tex(FACE_TEX)
         self.body = Entity(parent=self.root, model='quad', billboard=True,
-                           scale=(2.0, 2.0), color=color.rgb(10, 10, 12),
-                           double_sided=True)
+                           scale=(2.4, 2.4), double_sided=True,
+                           color=color.rgb(255, 255, 255))
+        if tex is not None:
+            self.body.texture = tex
+        else:                                   # fallback: flat silhouette
+            self.body.color = color.rgb(10, 10, 12)
+
+        # animated red glow over the pupils (matches the face texture layout)
         self.eye_l = Entity(parent=self.body, model='circle', color=color.rgb(255, 40, 40),
-                            position=(-0.16, 0.22, -0.01), scale=(0.11, 0.05))
+                            position=(-0.31, 0.16, -0.02), scale=(0.20, 0.20),
+                            double_sided=True)
         self.eye_r = Entity(parent=self.body, model='circle', color=color.rgb(255, 40, 40),
-                            position=(0.16, 0.22, -0.01), scale=(0.11, 0.05))
-        self.mouth = Entity(parent=self.body, model='circle', color=color.rgb(235, 235, 235),
-                            position=(0, -0.16, -0.01), scale=(0.52, 0.15))
+                            position=(0.31, 0.16, -0.02), scale=(0.20, 0.20),
+                            double_sided=True)
+        # blood-red glow so you see it coming in the dark
         self.light = None
         try:
             from ursina.lights import PointLight
@@ -151,8 +162,8 @@ class Nextbot(Entity):
             g.audio.scream.play(volume=clamp(1 - dist / 35.0, 0.15, 0.9))
             self.next_scream = self.t + random.uniform(6, 13)
 
-        # ---- visuals: bobbing, glitch jitter, flickering eyes
-        self.root.y = 1.15 + math.sin(self.t * 9) * 0.07
+        # ---- visuals: bobbing, glitch jitter, flickering pupils
+        self.root.y = 1.25 + math.sin(self.t * 9) * 0.07
         self.root.x = random.uniform(-0.05, 0.05) if self.speed > 10 else 0
         flick = 0.65 + 0.35 * math.sin(self.t * 13)
         ec = color.rgb(255, int(20 + 40 * flick), int(20 + 40 * flick))

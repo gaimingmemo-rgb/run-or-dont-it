@@ -14,6 +14,35 @@ This game is part of the Zartos Studios network, puppeteered by Zarto's Studios.
 - A **nextbot** that hunts you with real line-of-sight AI, searches when it loses you, and gets faster forever
 - Terrifying atmosphere: night, fog, flickering lights, flashlight with battery, heartbeat that ramps with proximity, jumpscare death screen
 
+## Graphics
+
+All textures are **generated procedurally at first launch** (pure Python, no downloads, no assets in the repo) and cached in `assets/textures/`:
+
+| Texture | Used for |
+|---|---|
+| `floor_tile` | School corridor + classroom floors |
+| `concrete` | Store floor, sidewalks, foundations |
+| `asphalt` | City streets |
+| `brick` | Store + city walls, alley nooks |
+| `wall_school` | School walls (painted upper + tile wainscot) |
+| `wood` | Desks, benches, shelves, bleachers |
+| `metal` | Lockers, shelves, freezers, cars, lamps |
+| `locker` | Corridor locker rows |
+| `ceiling` | Drop-ceiling panels |
+| `blackboard` | Classroom chalkboards (chalk smudges + writing) |
+| `bark` | Tree trunks |
+| `grass` | Tree canopy + grass patches |
+| `building1-3` | City facades with lit/dark window grids |
+| `nextbot_face` | The thing that hunts you (384px horror face) |
+
+Delete `assets/textures/` to force a re-bake.
+
+## Props (multi-part, not single cubes)
+
+- **School**: desks with 4 legs + chairs, teacher desks, blackboards with chalk trays, locker rows with vents, gym bleachers + basketball hoop, cafeteria tables + benches
+- **Store**: aisle shelves stacked with tinted products, glass-door freezers with interior glow, checkout counters with registers, produce displays
+- **City**: 3x3 building blocks with rooftop boxes/antennas/red beacons, plaza fountain, trees with bark trunks + 3-layer canopy, cars with cabins/windshields/wheels/headlights/taillights, street lamps (some flicker), bus stops, benches, hydrants, dumpsters, crosswalks
+
 ## Mechanics
 
 | Key | Action |
@@ -40,7 +69,7 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-First launch auto-generates default sound files into `assets/sounds/`.
+First launch bakes textures and sounds into `assets/` — expect a few extra seconds once, then it's instant.
 
 ## Custom sounds
 
@@ -54,14 +83,15 @@ Supported: `.mp3`, `.ogg`, `.wav`
 
 | File | Role |
 |---|---|
-| `main.py` | Game loop, state machine, escape/exit logic |
+| `main.py` | Game loop, state machine, escape/exit logic, texture baking |
 | `player.py` | Movement, stamina, slide, crouch, peek, hide, flashlight |
-| `nextbot.py` | Hunter AI: hunt, search, witness, catch |
-| `maps.py` | School / Store / City builders |
+| `nextbot.py` | Hunter AI: hunt, search, witness, catch (uses generated face) |
+| `maps.py` | School / Store / City builders with detailed multi-part props |
+| `texture_gen.py` | Procedural PNG texture factory (15 textures) |
 | `ui.py` | Menu, HUD, pause, death & win screens |
 | `audio_manager.py` | Sound loader (your files override defaults) |
 | `sfx_generator.py` | Procedural default sound synthesis |
-| `helpers.py` | Shared light helpers |
+| `helpers.py` | Texture loading + light helpers |
 | `requirements.txt` | Dependencies |
 
 ## Objective
