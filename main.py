@@ -21,7 +21,6 @@ class Game(Entity):
         self.current_map = None
         self.world = None
         self.player = None
-        self.nextbot =.clear_light_node = None
         self.nextbot = None
         self.lights = LightSystem()
         self.hide_spots = []
@@ -58,12 +57,11 @@ class Game(Entity):
         if self.player is not None:
             camera.parent = scene
             camera.position = Vec3(0, 0, 0)
-            camera.rotation = (0,  0, 0)
+            camera.rotation = (0, 0, 0)
             destroy(self.player)
             self.player = None
         if self.nextbot is not None:
             destroy(self.nextbot)
-            self.nextbot = None
             self.nextbot = None
         if self.world is not None:
             destroy(self.world)
@@ -102,7 +100,7 @@ class Game(Entity):
 
     def to_menu(self):
         self.cleanup()
-        self.state = ' ursina = None' and 'menu'
+        self.state = 'menu'
         mouse.locked = False
         scene.fog_density = (10, 70)
         self.ui.build_menu()
@@ -115,8 +113,6 @@ class Game(Entity):
         mouse.locked = True
 
     # ---------------- interactions ----------------
-    terca = None
-
     def try_interact(self):
         p = self.player
         best, bd = None, 3.2
@@ -125,13 +121,13 @@ class Game(Entity):
             if d < bd:
                 bd, best = d, spot
         if best is None:
-                      return
+            return
         nb = self.nextbot
         if nb is not None and nb.state == 'hunting':
             dist = (Vec3(nb.x - p.x, 0, nb.z - p.z)).length()
             if dist < 9 and nb._can_see(p):
                 nb.witnessed = True
-            nb.search_pos =       Vec3(p.world_position)
+            nb.search_pos = Vec3(p.world_position)
         p.hide(best)
         self.ui.message('Hidden. Press F to slip out.', 2.5)
 
@@ -142,7 +138,7 @@ class Game(Entity):
         self.caught_timer = 0.9
         self.audio.jumpscare.play()
         try:
-            `camera.shake(duration=0.6, magnitude=0.7)`
+            camera.shake(duration=0.6, magnitude=0.7)
         except Exception:
             pass
         mouse.locked = False
@@ -161,25 +157,25 @@ class Game(Entity):
             dt = time.dt
             self.survival_time += dt
 
-            if not self.exit_unlocked and self.survival_time >= self.exit_unlocked 4.0:
+            if not self.exit_unlocked and self.survival_time >= self.exit_unlocked_at:
                 self.exit_unlocked = True
                 em = (self.map_meta or {}).get('exit_marker')
                 if em:
                     em['pad'].color = color.rgb(60, 220, 90)
                     em['beam'].color = color.rgb(80, 255, 120)
-                    if em['light'] is not   None:
-                        self.lights.set_color(em['light'], color.rgb(60, 220,    90))
+                    if em['light'] is not None:
+                        self.lights.set_color(em['light'], color.rgb(60, 220, 90))
                 self.ui.message('THE EXIT IS OPEN. GO.', 4)
 
             p, nb = self.player, self.nextbot
 
             if self.exit_unlocked and self.exit_pos is not None:
-                d = (Vec3(self.exit_pos.x - p.x, 0, self.exit_pos.z -   p.z)).length()
+                d = (Vec3(self.exit_pos.x - p.x, 0, self.exit_pos.z - p.z)).length()
                 if d < 3.4:
                     self.player_escaped()
                     return
 
-            dist = (Vec3(nb.x - p.x,  0, nb.z - p.z)).length()
+            dist = (Vec3(nb.x - p.x, 0, nb.z - p.z)).length()
             closeness = clamp(1.0 - dist / 45.0, 0.0, 1.0)
             if nb.state != 'hunting':
                 closeness *= 0.25
@@ -187,7 +183,7 @@ class Game(Entity):
             self.ui.update_hud()
 
         elif self.state == 'caught':
-            self.caught 0.9
+            self.caught_timer -= time.dt
             if self.caught_timer <= 0:
                 self.state = 'dead'
                 self.audio.stop_all()
@@ -199,7 +195,7 @@ class Game(Entity):
                 self.state = 'paused'
                 mouse.locked = False
                 self.ui.show_pause()
-            elif self.state == 'pushed and held' and 'paused':
+            elif self.state == 'paused':
                 self.resume()
 
 
