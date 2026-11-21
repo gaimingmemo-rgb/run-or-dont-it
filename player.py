@@ -51,17 +51,10 @@ class Player(FirstPersonController):
         self.hide_spot = None
         self._saved_pos = None
 
-        # flashlight
+        # flashlight (safe raw Panda3D light)
         self.battery = 100.0
         self.flashlight_on = True
-        self.flashlight = None
-        try:
-            from ursina.lights import PointLight
-            self.flashlight = PointLight(parent=camera, color=color.rgb(255, 248, 220))
-            tune_pointlight(self.flashlight)
-            game.lights.append(self.flashlight)
-        except Exception:
-            self.flashlight = None
+        self.flashlight = game.lights.add_point(camera, (0, 0, 0), color.rgb(255, 248, 220))
 
     # ---------------- movement ----------------
     def _move(self, delta):
@@ -208,11 +201,19 @@ class Player(FirstPersonController):
             self.battery = max(0.0, self.battery - dt * 0.55)
             if self.battery <= 0:
                 self.flashlight_on = False
-        if self.flashlight:
+        if self.flashlight is not None:
             flicker_on = self.flashlight_on
             if flicker_on and self.battery < 25 and random.random() < 0.10:
                 flicker_on = random.random() > 0.4
-            self.flashlight.enabled = flicker_on
+            # raw node path: hide/show via setLight on render
+            import builtins
+            render = getattr(builtins, 'base', None)
+            render = getattr(render, 'render', None) if render is not None else None
+            if render is not None:
+                if flicker_on:
+                    render.setLight(self.flashlight)
+                else:
+                    render.clearLight(self.flashlight)
 
     # ---------------- hiding ----------------
     def hide(self, spot):
