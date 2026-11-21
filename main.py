@@ -6,6 +6,7 @@
 from ursina import *
 from ursina.lights import AmbientLight
 
+import texture_gen
 from audio_manager import AudioManager
 from maps import build_map, MAP_INFO
 from nextbot import Nextbot
@@ -30,6 +31,10 @@ class Game(Entity):
         self.exit_pos = None
         self.caught_timer = 0.0
 
+        # bake PNG textures + default sounds BEFORE anything uses them
+        texture_gen.ensure_all()
+        self.audio = AudioManager()
+
         window.color = color.black
         scene.fog_color = color.rgb(4, 4, 8)
         scene.fog_density = (10, 70)
@@ -45,7 +50,6 @@ class Game(Entity):
         except Exception:
             pass
 
-        self.audio = AudioManager()
         self.ui = GameUI(self)
         mouse.locked = False
 
