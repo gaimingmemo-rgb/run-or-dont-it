@@ -7,7 +7,7 @@ import random
 
 from ursina import *
 
-from helpers import load_tex, tune_pointlight
+from helpers import load_tex
 
 FACE_TEX = 'nextbot_face'
 
@@ -54,15 +54,8 @@ class Nextbot(Entity):
         self.eye_r = Entity(parent=self.body, model='circle', color=color.rgb(255, 40, 40),
                             position=(0.31, 0.16, -0.02), scale=(0.20, 0.20),
                             double_sided=True)
-        # blood-red glow so you see it coming in the dark
-        self.light = None
-        try:
-            from ursina.lights import PointLight
-            self.light = PointLight(parent=self.root, color=color.rgb(110, 25, 25))
-            tune_pointlight(self.light)
-            game.lights.append(self.light)
-        except Exception:
-            self.light = None
+        # blood-red glow so you see it coming in the dark (safe raw light)
+        self.light = game.lights.add_point(self.root, (0, 0, 0), color.rgb(110, 25, 25))
 
     def begin_hunt(self, wait=10.0):
         self.state = 'waiting'
