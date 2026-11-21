@@ -5,13 +5,13 @@
 #  Every prop is multi-part: desks have legs + chairs, lockers have
 #  vents, freezers have glass doors, trees have bark + canopy layers,
 #  cars have cabins/wheels/headlights. Textures are generated PNGs.
+#  Lights use the safe raw Panda3D LightSystem (no crash on cleanup).
 # ============================================================
 import random as _r
 
 from ursina import *
-from ursina.lights import PointLight
 
-from helpers import load_tex, tune_pointlight
+from helpers import load_tex
 
 MAP_INFO = {
     'school': {'label': 'SCHOOL'},
@@ -38,18 +38,14 @@ def _box(parent, pos, scale, col, collider=True):
 
 
 def _light(game, parent, pos, col):
-    l = PointLight(parent=parent, position=pos, color=col)
-    tune_pointlight(l)
-    game.lights.append(l)
-    return l
+    return game.lights.add_point(parent, pos, col)
 
 
 class FlickerLight(Entity):
     def __init__(self, game, parent, pos, col, flicker=True, lamp_scale=(0.9, 0.07, 0.9)):
         super().__init__(parent=parent, position=pos)
-        self.pl = PointLight(parent=self, color=col)
-        tune_pointlight(self.pl)
-        game.lights.append(self.pl)
+        self.pl = game.lights.add_point(self, (0, 0, 0), col)
+        self.game = game
         self.base_col = col
         self.lamp = Entity(parent=self, model='cube', scale=lamp_scale,
                            color=col, texture=load_tex('metal'), unlit=True)
@@ -63,7 +59,8 @@ class FlickerLight(Entity):
         self.t -= time.dt
         if self.t <= 0:
             self.on = _r.random() > 0.3
-            self.pl.enabled = self.on
+            if self.pl is not None:
+                self.game.lights.set_color(self.pl, self.base_col if self.on else color.rgb(20, 20, 18))
             self.lamp.color = self.base_col if self.on else color.rgb(35, 35, 32)
             self.t = _r.uniform(0.06, 0.8)
 
@@ -73,8 +70,8 @@ def _closet(game, parent, x, z, rot_y, col, label, tex=None):
     c = Entity(parent=parent, position=(x, 0, z), rotation_y=rot_y)
     _tex_box(c, (0, 2, -1.15), (2.6, 4, 0.3), col, tex)   # back
     _tex_box(c, (-1.2, 2, 0), (0.3, 4, 2.3), col, tex)    # left side
-    _tex_box(c, (1.2, 2, 0), (0.3, 4, 2.3), col, tex)      # right side
-    _tex_box(c, (0, 4, 0), (2.7, 0.3, 2.4), col, tex)      # roof
+    _tex_box(c, (1.2, 2, 0), (0.3, 4, 2.3), col, tex)     # right side
+    _tex_box(c, (0, 4, 0), (2.7, 0.3, 2.4), col, tex)     # roof
     spot = {
         'pos': c.world_position + c.back * 0.6,
         'exit': c.world_position + c.forward * 1.6,
@@ -109,13 +106,13 @@ def build_map(game, key, parent):
 def _desk(parent, x, z, rot_y):
     wood = load_tex('wood')
     d = Entity(parent=parent, position=(x, 0, z), rotation_y=rot_y)
-    _tex_box(d, (0, 0.72, 0), (1.8, 0.08, 1.0), color.rgb(180, 130, 80), wood)   # top
+    _tex_box(d, (0, 0.72, 0), (1.8, 0.08, 1.0), color.rgb(180, 130, 80), wood)  # top
     for (lx, lz) in ((-0.8, -0.42), (0.8, -0.42), (-0.8, 0.42), (0.8, 0.42)):
-        _box(d, (lx, 0.34, lz), (0.09, 0.68, 0.09), color.rgb(70, 48, 28))      # legs
-    _box(d, (0, 0.45, -0.46), (1.6, 0.08, 0.62), color.rgb(96, 70, 44))         # under tray
+        _box(d, (lx, 0.34, lz), (0.09, 0.68, 0.09), color.rgb(70, 48, 28))     # legs
+    _box(d, (0, 0.45, -0.46), (1.6, 0.08, 0.62), color.rgb(96, 70, 44))        # under tray
     ch = Entity(parent=parent, position=(x + 1.2, 0, z - 0.6), rotation_y=rot_y)
-    _tex_box(ch, (0, 0.45, 0), (0.9, 0.08, 0.9), color.rgb(150, 110, 70), wood)  # seat
-    _box(ch, (0, 0.80, -0.40), (0.9, 0.7, 0.08), color.rgb(96, 70, 44))         # backrest
+    _tex_box(ch, (0, 0.45, 0), (0.9, 0.08, 0.9), color.rgb(150, 110, 70), wood) # seat
+    _box(ch, (0, 0.80, -0.40), (0.9, 0.7, 0.08), color.rgb(96, 70, 44))        # backrest
     for (lx, lz) in ((-0.36, -0.36), (0.36, -0.36), (-0.36, 0.36), (0.36, 0.36)):
         _box(ch, (lx, 0.22, lz), (0.07, 0.44, 0.07), color.rgb(70, 48, 28))
     return d
@@ -138,7 +135,7 @@ def _blackboard(parent, x, z, rot_y, scale_x=6):
              load_tex('blackboard'), False)
     frame_col = color.rgb(60, 46, 30)
     _box(e, (0, 2.0, -0.04), (scale_x + 0.3, 1.8, 0.10), frame_col, False)
-    _box(e, (0, 1.1, 0.1), (scale_x * 0.35, 0.06, 0.06), color.rgb(150, 150, 150), False)
+    _box(e, (0, 1.1, 0.1), (scale_x * 0.35, 0.06, 0.06), color.rgb(150, 150, 150), False)  # chalk tray
     return e
 
 
@@ -153,6 +150,7 @@ def _locker_row(parent, x, z, rot_y, count=4):
 
 
 def _shelf(parent, x, z, rot_y, length, shelves=4):
+    """Aisle shelf with stacked tinted products."""
     metal = load_tex('metal')
     s = Entity(parent=parent, position=(x, 0, z), rotation_y=rot_y)
     _tex_box(s, (0, 1.6, 0), (length, 0.12, 0.55), color.rgb(120, 120, 130), metal)
@@ -182,12 +180,14 @@ def _freezer(game, parent, x, z, rot_y):
 
 
 def _tree(parent, x, z, rnd):
+    """Bark trunk + tapered layered canopy. NOT two cubes."""
     bark = load_tex('bark')
     t = Entity(parent=parent, position=(x, 0, z))
     h = rnd.uniform(3.2, 5.2)
     _tex_box(t, (0, h * 0.45, 0), (0.5, h * 0.9, 0.5), color.rgb(120, 85, 55), bark, tiling=2)
     _tex_box(t, (0, h * 0.92, 0), (0.7, 0.3, 0.7), color.rgb(90, 62, 40), bark)
-    for i in range(3):                             # tapered canopy layers
+    layers = 3
+    for i in range(layers):
         ly = h * (1.02 + 0.13 * i)
         lw = 2.8 - 0.55 * i + rnd.uniform(-0.3, 0.3)
         lh = rnd.uniform(0.75, 1.15)
@@ -204,17 +204,17 @@ def _car(parent, x, z, rot_y, rnd):
                            color.rgb(80, 80, 90), color.rgb(116, 104, 60),
                            color.rgb(46, 84, 46)])
     _tex_box(car, (0, 0.62, 0), (4.4, 0.62, 1.95), body_col, metal)
-    _tex_box(car, (0, 0.28, 0), (4.1, 0.35, 1.7), color.rgb(30, 30, 34), metal)
-    _tex_box(car, (0, 1.05, -0.15), (2.3, 0.62, 1.85), body_col, metal)
-    _tex_box(car, (0, 1.05, 0.78), (2.15, 0.50, 0.08), color.rgb(25, 32, 45), None, False)
-    _tex_box(car, (0, 1.05, -1.06), (2.15, 0.50, 0.08), color.rgb(25, 32, 45), None, False)
-    _tex_box(car, (0, 1.32, 0), (2.35, 0.10, 1.90), color.rgb(40, 40, 44), metal)
+    _tex_box(car, (0, 0.28, 0), (4.1, 0.35, 1.7), color.rgb(30, 30, 34), metal)  # underbody
+    _tex_box(car, (0, 1.05, -0.15), (2.3, 0.62, 1.85), body_col, metal)          # cabin
+    _tex_box(car, (0, 1.05, 0.78), (2.15, 0.50, 0.08), color.rgb(25, 32, 45), None, False)  # windshield
+    _tex_box(car, (0, 1.05, -1.06), (2.15, 0.50, 0.08), color.rgb(25, 32, 45), None, False)  # rear glass
+    _tex_box(car, (0, 1.32, 0), (2.35, 0.10, 1.90), color.rgb(40, 40, 44), metal)  # roof
     for s in (-1, 1):
-        for wx in (1.45, -1.45):
+        for wx in (1.45, -1.45):                                                     # wheels
             _tex_box(car, (wx, 0.33, s * 0.98), (0.66, 0.66, 0.30), color.rgb(18, 18, 20), None, False)
             _tex_box(car, (wx, 0.33, s * 1.02), (0.30, 0.30, 0.32), color.rgb(70, 70, 75), metal, False)
-        _tex_box(car, (2.21, 0.62, s * 0.6), (0.06, 0.16, 0.30), color.rgb(210, 205, 150), None, False)
-        _tex_box(car, (-2.21, 0.66, s * 0.6), (0.06, 0.14, 0.25), color.rgb(150, 40, 35), None, False)
+        _tex_box(car, (2.21, 0.62, s * 0.6), (0.06, 0.16, 0.30), color.rgb(210, 205, 150), None, False)  # headlights
+        _tex_box(car, (-2.21, 0.66, s * 0.6), (0.06, 0.14, 0.25), color.rgb(150, 40, 35), None, False)  # taillights
     return car
 
 
@@ -227,12 +227,12 @@ def _street_lamp(game, parent, x, z, rot_y, flicker):
     _tex_box(l, (0, 5.35, 0), (0.16, 0.4, 0.16), color.rgb(50, 50, 56), metal)
     _tex_box(l, (0.75, 5.5, 0), (1.5, 0.12, 0.12), color.rgb(50, 50, 56), metal)
     _tex_box(l, (1.4, 5.38, 0), (0.7, 0.10, 0.35), color.rgb(215, 185, 125), None, False)
+    fl = None
     if flicker:
         fl = FlickerLight(game, l, (1.4, 5.2, 0), color.rgb(215, 185, 125),
                           flicker=True, lamp_scale=(0.6, 0.08, 0.32))
     else:
         _light(game, l, (1.4, 5.0, 0), color.rgb(185, 160, 105))
-        fl = None
     return l, fl
 
 
@@ -267,10 +267,10 @@ def _dumpster(parent, x, z, rot_y):
 
 def _bus_stop(game, parent, x, z, rot_y, flicker=False):
     glass_col = color.rgb(90, 110, 130)
-    metal = load_tex('metal')
     b = Entity(parent=parent, position=(x, 0, z), rotation_y=rot_y)
-    _tex_box(b, (0, 1.2, -1.0), (4.0, 2.4, 0.12), glass_col, None, False)
-    _tex_box(b, (-2.0, 1.2, 0), (0.12, 2.4, 2.0), glass_col, None, False)
+    metal = load_tex('metal')
+    _tex_box(b, (0, 1.2, -1.0), (4.0, 2.4, 0.12), glass_col, None, False)     # back glass
+    _tex_box(b, (-2.0, 1.2, 0), (0.12, 2.4, 2.0), glass_col, None, False)     # side glass
     _tex_box(b, (0, 2.45, 0), (4.2, 0.15, 2.2), color.rgb(50, 50, 56), metal)
     _bench(parent, x, z, rot_y)
     fl = None
@@ -298,11 +298,13 @@ def _school(game, parent):
         col = col or color.rgb(255, 255, 255)
         _tex_box(parent, (x, h / 2, z), (sx, h, sz), col, tex_wall)
 
+    # outer shell
     wall(0, -D_ / 2, W_, 1)
     wall(0, D_ / 2, W_, 1)
     wall(-W_ / 2, 0, 1, D_)
     wall(W_ / 2, 0, 1, D_)
 
+    # corridor walls with doorways into 4 rooms per side
     room_centers = (-45, -15, 15, 45)
     for s in (-1, 1):
         zw = 4 * s
@@ -323,6 +325,7 @@ def _school(game, parent):
                     z = s * (15 + step * 1.7)
                     _tex_box(parent, (cx, y, z), (18, 0.8, 1.7), color.rgb(255, 255, 255),
                              load_tex('wood'), tiling=8)
+                # basketball hoop
                 hoop = Entity(parent=parent, position=(cx, 0, s * 36))
                 _box(hoop, (0, 3.05, 0), (0.1, 0.1, 0.1), color.rgb(200, 80, 40))
                 _box(hoop, (0, 3.05, 0.6), (1.8, 1.05, 0.10), color.rgb(160, 60, 30), False)
@@ -332,11 +335,10 @@ def _school(game, parent):
             if cx == 45 and s == -1:                      # CAFETERIA
                 for i in range(3):
                     for j in range(2):
-                        tx, tz = cx - 6 + i * 6, s * (13 + j * 8)
-                        _tex_box(parent, (tx, 0.38, tz), (4.2, 0.08, 1.5),
-                                 color.rgb(255, 255, 255), tex_ceil, False)
+                        _tex_box(parent, (cx - 6 + i * 6, 0.38, s * (13 + j * 8)),
+                                 (4.2, 0.08, 1.5), color.rgb(255, 255, 255), tex_ceil, False)
                         for (lx, lz) in ((-1.9, -0.6), (1.9, -0.6), (-1.9, 0.6), (1.9, 0.6)):
-                            _box(parent, (tx + lx, 0.19, tz + lz),
+                            _box(parent, (cx - 6 + i * 6 + lx, 0.19, s * (13 + j * 8) + lz),
                                  (0.08, 0.38, 0.08), color.rgb(70, 48, 28))
                 _bench(parent, cx - 10, s * 30, 90)
                 _bench(parent, cx + 10, s * 30, 90)
@@ -356,10 +358,11 @@ def _school(game, parent):
                 continue
             _locker_row(parent, lx, s * 3.45, 180 if s > 0 else 0, 4)
 
-    # lights
+    # ceiling fluorescents in the corridor
     for lx in (-50, -25, 0, 25, 50):
         FlickerLight(game, parent, (lx, 4.3, 0), color.rgb(195, 188, 160),
                      flicker=rnd.random() < 0.3)
+    # classroom lights
     for s in (-1, 1):
         for cx in (-45, 15):
             FlickerLight(game, parent, (cx, 4.3, s * 20), color.rgb(150, 148, 158),
@@ -407,22 +410,22 @@ def _store(game, parent):
     wall(-30.5, -D_ / 2, 35, 1)
     wall(30.5, -D_ / 2, 35, 1)
 
-    # aisle shelves
+    # detailed aisle shelves
     for z in (-18, -9, 0, 9, 18):
         _shelf(parent, -6, z, 0, 52)
 
-    # freezer corner with interior glow
+    # freezer corner (west) - glass doors + glow inside
     for fz in (-24, -17, -10):
         _freezer(game, parent, -43, fz, 90)
 
-    # checkout area
+    # checkout area (south-east)
     for i in range(3):
         x = 22 + i * 8
         _tex_box(parent, (x, 0.55, -26), (1.2, 1.1, 6), color.rgb(255, 255, 255), load_tex('metal'))
-        _box(parent, (x, 1.35, -27.5), (0.9, 0.6, 0.9), color.rgb(38, 38, 44), False)
-        _box(parent, (x, 0.28, -22.5), (0.14, 0.55, 0.14), color.rgb(120, 120, 126))
+        _box(parent, (x, 1.35, -27.5), (0.9, 0.6, 0.9), color.rgb(38, 38, 44), False)   # register
+        _box(parent, (x, 0.28, -22.5), (0.14, 0.55, 0.14), color.rgb(120, 120, 126))   # legs
 
-    # stockroom
+    # stockroom (north-east)
     wall(38, 10, 20, 0.8)
     wall(30, 12.5, 0.8, 5)
     wall(30, 24.5, 0.8, 11)
@@ -431,10 +434,10 @@ def _store(game, parent):
         _tex_box(parent, (34 + (i % 3) * 4, 0.6 + (i // 3) * 1.3, 22 - (i % 3)),
                  (1.3, 1.2, 1.3), color.rgb(255, 255, 255), wood)
 
-    # produce displays
+    # produce displays near the entrance
     for (px, pz) in ((-24, -26), (-16, -26), (-24, -20), (-16, -20)):
-        _tex_box(parent, (px, 0.45, pz), (3.2, 0.9, 2.4), color.rgb(255, 255, 255), wood)
-        _tex_box(parent, (px, 0.95, pz), (3.0, 0.08, 2.2), color.rgb(60, 70, 50), None, False)
+        _tex_box(parent, (px, 0.45, pz), (3.2, 0.9, 2.4), color.rgb(255, 255, 255), load_tex('wood'))
+        _box(parent, (px, 0.95, pz), (3.0, 0.08, 2.2), color.rgb(60, 70, 50), False)
 
     # hiding closets
     cw = color.rgb(255, 255, 255)
@@ -471,14 +474,14 @@ def _city(game, parent):
     Entity(parent=parent, model='plane', scale=(150, 1, 150), color=color.rgb(255, 255, 255),
            texture=asph, texture_scale=(30, 30), collider='box')
 
-    # sidewalks
+    # sidewalks on each block
     for bx in (-50, 0, 50):
         for bz in (-50, 0, 50):
             _tex_box(parent, (bx, 0.06, bz), (36, 0.12, 36), color.rgb(255, 255, 255), conc, False, 6)
 
-    # crosswalks
-    for cx in (-12.5, 12.5):
-        _tex_box(parent, (cx, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
+    # crosswalks around the central plaza
+    _tex_box(parent, (-12.5, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
+    _tex_box(parent, (12.5, 0.02, 0), (1.8, 0.05, 24), color.rgb(220, 215, 200), conc, False)
     _tex_box(parent, (0, 0.02, -12.5), (24, 0.05, 1.8), color.rgb(220, 215, 200), conc, False)
     _tex_box(parent, (0, 0.02, 12.5), (24, 0.05, 1.8), color.rgb(220, 215, 200), conc, False)
 
@@ -487,7 +490,7 @@ def _city(game, parent):
     for bx in (-50, 0, 50):
         for bz in (-50, 0, 50):
             if bx == 0 and bz == 0:
-                continue
+                continue                                   # central plaza = exit
             spots = [(-9, -9), (9, -9), (-9, 9), (9, 9)]
             rnd.shuffle(spots)
             for (ox, oz) in spots[:rnd.randint(1, 2)]:
@@ -495,8 +498,9 @@ def _city(game, parent):
                 d = rnd.uniform(13, 17)
                 h = rnd.uniform(10, 26)
                 f = load_tex(rnd.choice(facades))
-                _tex_box(parent, (bx + ox, h / 2, bz + oz), (w, h, d),
-                         color.rgb(255, 255, 255), f, True, max(1, int(h / 6)))
+                b = _tex_box(parent, (bx + ox, h / 2, bz + oz), (w, h, d),
+                             color.rgb(255, 255, 255), f, True, max(1, int(h / 6)))
+                # rooftop details
                 _tex_box(parent, (bx + ox, h + 0.4, bz + oz), (w * 0.4, 0.8, d * 0.4),
                          color.rgb(60, 60, 64), conc, False)
                 _box(parent, (bx + ox + w / 4, h + 1.8, bz + oz - d / 4),
@@ -518,7 +522,7 @@ def _city(game, parent):
     for (tx, tz) in tree_pts:
         _tree(parent, tx, tz, rnd)
 
-    # street lamps
+    # street lamps (some flicker)
     lamp_pts = [(-25, -25), (-25, 25), (25, -25), (25, 25), (0, -25), (0, 25)]
     for i, (lx, lz) in enumerate(lamp_pts):
         _street_lamp(game, parent, lx, lz, 0, flicker=(i % 3 == 0))
@@ -547,13 +551,13 @@ def _city(game, parent):
         else:
             _car(parent, band + off, rnd.uniform(-62, 62), 90, rnd)
 
-    # grass patches
+    # grass patches with trees on the outer ring
     for (gx, gz) in [(-64, 0), (64, 0), (0, -64), (0, 64),
                      (-64, 64), (64, -64), (-64, -64), (64, 64)]:
         _tex_box(parent, (gx, 0.03, gz), (18, 0.07, 18), color.rgb(255, 255, 255), grass, False, 4)
         _tree(parent, gx, gz, rnd)
 
-    # alley nooks
+    # alley nooks (hide spots)
     cw = color.rgb(255, 255, 255)
     tex_wall = load_tex('brick')
     _closet(game, parent, 28.5, 20, -90, cw, 'Alley Nook', tex_wall)
