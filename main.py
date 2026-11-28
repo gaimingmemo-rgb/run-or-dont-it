@@ -280,7 +280,7 @@ btn_js_menu = Button(parent=jumpscare_root, text="MAIN MENU", position=(0.18, -0
 # STATE TRANSITIONS
 # -------------------------------------------------------------
 def enter_main_menu():
-    global current_state
+    global current_state, active_player, active_nextbot, active_hud
     current_state = "MENU"
     
     menu_root.enabled = True
@@ -296,6 +296,19 @@ def enter_main_menu():
     camera.parent = scene
     camera.position = (0, 0, 0)
     camera.rotation = (0, 0, 0)
+
+    # Clean up any active gameplay entities
+    if active_player:
+        active_player.destroy_player()
+        active_player = None
+    if active_nextbot:
+        active_nextbot.destroy_bot()
+        active_nextbot = None
+    if active_hud:
+        destroy(active_hud)
+        active_hud = None
+    if map_builder:
+        map_builder.clear()
 
     try:
         snd_menu.play()
@@ -350,7 +363,7 @@ def start_game(map_choice):
         map_builder.build_city()
 
     if active_player:
-        destroy(active_player)
+        active_player.destroy_player()
     if active_nextbot:
         active_nextbot.destroy_bot()
     if active_hud:

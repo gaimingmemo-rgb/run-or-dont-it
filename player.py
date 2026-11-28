@@ -343,3 +343,17 @@ class AdvancedPlayer(Entity):
             self.step_timer = 0.12
 
         self.body_rig.scale_y = self.cur_height / self.stand_height
+
+    def destroy_player(self):
+        camera.parent = scene
+        camera.position = (0, 0, 0)
+        camera.rotation = (0, 0, 0)
+        if hasattr(self, 'reticle') and self.reticle:
+            destroy(self.reticle)
+        if hasattr(self, 'fl') and self.fl:
+            destroy(self.fl)
+        if hasattr(self, 'body_rig') and self.body_rig:
+            destroy(self.body_rig)
+        if hasattr(self, 'camera_pivot') and self.camera_pivot:
+            destroy(self.camera_pivot)
+        destroy(self)
