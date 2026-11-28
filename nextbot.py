@@ -1,171 +1,116 @@
-# ============================================================
-#  RUN OR DONT IT - the NEXTBOT
-#  (c) 2026 Project Revision / Zarto's Studios. All rights reserved.
-# ============================================================
+"""
+Nextbot AI & Pursuit Engine for 'Run or dont'
+Features:
+- Balanced, beatable, yet relentless chase AI (Speed: 9.2 m/s vs player sprint 13.5 m/s)
+- Taking corners and sliding around obstacles lets players outmaneuver the Nextbot
+- Proximity-based audio tension (intense music rises as nextbot nears)
+- Jumpscare trigger with screen shake and ear-piercing scream on catch
+"""
+import os
 import math
-import random
-
+from pathlib import Path
 from ursina import *
 
-from helpers import load_tex, tune_pointlight
-
-FACE_TEX = 'nextbot_face'
-
-
-def _rot_y(v, deg):
-    r = math.radians(deg)
-    c, s = math.cos(r), math.sin(r)
-    return Vec3(v.x * c + v.z * s, 0, -v.x * s + v.z * c).normalized()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class Nextbot(Entity):
-    """A billboard nextbot with a generated horror face: it hunts, it searches,
-    it gets faster forever."""
+    def __init__(self, target_player, spawn_pos=(40, 0, 40), on_catch_callback=None, **kwargs):
+        bot_tex = "assets/textures/nextbot.png"
 
-    def __init__(self, game, position=(0, 0, 0)):
-        super().__init__(position=position)
-        self.game = game
-        self.state = 'dormant'      # dormant -> waiting -> hunting
-        self.wait_time = 10.0
-        self.base_speed = 6.8
-        self.max_speed = 15.5
-        self.speed = self.base_speed
-        self.elapsed = 0.0
-        self.witnessed = False      # saw you go into a hiding spot
-        self.search_pos = None
-        self.lurk_time = 0.0
-        self.t = 0.0
-        self.next_scream = 0.0
+        super().__init__(
+            position=spawn_pos,
+            scale=(2.2, 3.0, 1.0),
+            model='quad',
+            texture=bot_tex,
+            double_sided=True,
+            color=color.white,
+            **kwargs
+        )
 
-        self.root = Entity(parent=self)
-        tex = load_tex(FACE_TEX)
-        self.body = Entity(parent=self.root, model='quad', billboard=True,
-                           scale=(2.4, 2.4), double_sided=True,
-                           color=color.rgb(255, 255, 255))
-        if tex is not None:
-            self.body.texture = tex
-        else:                                   # fallback: flat silhouette
-            self.body.color = color.rgb(10, 10, 12)
+        self.target = target_player
+        self.on_catch = on_catch_callback
 
-        # animated red glow over the pupils (matches the face texture layout)
-        self.eye_l = Entity(parent=self.body, model='circle', color=color.rgb(255, 40, 40),
-                            position=(-0.31, 0.16, -0.02), scale=(0.20, 0.20),
-                            double_sided=True)
-        self.eye_r = Entity(parent=self.body, model='circle', color=color.rgb(255, 40, 40),
-                            position=(0.31, 0.16, -0.02), scale=(0.20, 0.20),
-                            double_sided=True)
-        # blood-red glow so you see it coming in the dark
-        self.light = None
-        try:
-            from ursina.lights import PointLight
-            self.light = PointLight(parent=self.root, color=color.rgb(110, 25, 25))
-            tune_pointlight(self.light)
-            game.lights.append(self.light)
-        except Exception:
-            self.light = None
+        # Balanced pursuit speed:
+        # Player Walk: 6.5 m/s
+        # Nextbot Speed: 9.2 m/s -> Outruns walking players!
+        # Player Sprint: 13.5 m/s -> Player CAN outrun it by sprinting!
+        # Player Slide: 18.0 m/s -> Momentum burst!
+        self.base_speed = 9.2
+        self.current_speed = self.base_speed
 
-    def begin_hunt(self, wait=10.0):
-        self.state = 'waiting'
-        self.wait_time = wait
+        self.caught = False
+        self.distance_to_player = 999.0
 
-    def _can_see(self, p):
-        if p.hidden:
-            return False
-        origin = self.world_position + Vec3(0, 1.4, 0)
-        target = p.world_position + Vec3(0, 1.4, 0)
-        d = target - origin
-        if d.length() < 0.6:
-            return True
-        hit = raycast(origin=origin, direction=d.normalized(), distance=d.length(),
-                      ignore=(self, self.root))
-        return not hit.hit
+        # Sinister glowing red aura
+        self.aura_light = PointLight(parent=self, position=(0, 1.5, 0), color=color.hex('#ff1a1a'))
+
+        # Audio
+        self.snd_jumpscare = Audio("assets/audio/jumpscare.wav", autoplay=False, loop=False, volume=1.0)
+        self.snd_chase     = Audio("assets/audio/chase_music.wav", autoplay=True, loop=True, volume=0.15)
+
+        # Hover bobbing timer
+        self.bob_timer = 0.0
 
     def update(self):
-        g = self.game
-        if g.state != 'playing':
+        if self.caught or not self.target:
             return
+
         dt = time.dt
-        self.t += dt
-        p = g.player
+        if dt > 0.08:
+            dt = 0.08
 
-        if self.state == 'dormant':
-            return
-        if self.state == 'waiting':
-            self.wait_time -= dt
-            if self.wait_time <= 0:
-                self.state = 'hunting'
-                g.audio.scream.play()
-                g.ui.message('IT IS AWAKE. RUN.', 3)
-            return
+        # Vector to player
+        dx = self.target.x - self.x
+        dz = self.target.z - self.z
+        self.distance_to_player = math.sqrt(dx * dx + dz * dz)
 
-        # it only ever gets faster
-        self.elapsed += dt
-        self.speed = min(self.base_speed + self.elapsed * 0.08, self.max_speed)
+        # Always face the player (billboard horror effect)
+        angle_rad = math.atan2(dx, dz)
+        self.rotation_y = math.degrees(angle_rad)
 
-        dist = Vec3(p.x - self.x, 0, p.z - self.z).length()
-        has_los = self._can_see(p)
+        # Move towards player with smooth pursuit
+        if self.distance_to_player > 0.1:
+            dir_x = dx / self.distance_to_player
+            dir_z = dz / self.distance_to_player
+            self.x += dir_x * self.current_speed * dt
+            self.z += dir_z * self.current_speed * dt
 
-        # ---- catch checks
-        if p.hidden:
-            if self.witnessed and dist < 2.4:
-                self.lurk_time += dt
-                if self.lurk_time > 2.6:
-                    g.player_caught()
-                    return
-            else:
-                self.lurk_time = max(0.0, self.lurk_time - dt)
-        else:
-            if dist < 1.7:
-                g.player_caught()
-                return
+        # Eerie hovering bob above floor
+        self.bob_timer += dt * 3.5
+        self.y = 1.35 + math.sin(self.bob_timer) * 0.15
 
-        # ---- pick a goal
-        if p.hidden:
-            if self.witnessed:
-                goal = Vec3(p.world_position)          # walk right up to your hiding spot
-            else:
-                if self.search_pos is None:
-                    self.search_pos = Vec3(self.x + random.uniform(-25, 25), 0,
-                                           self.z + random.uniform(-25, 25))
-                goal = self.search_pos
-        elif has_los:
-            self.search_pos = Vec3(p.world_position)
-            self.witnessed = False
-            goal = Vec3(p.world_position)
-        else:
-            goal = self.search_pos if self.search_pos is not None else Vec3(p.world_position)
+        # Dynamic chase music scaling by distance
+        if self.snd_chase:
+            # Full volume when within 15 meters, fading out over 60 meters
+            prox = clamp(1.0 - (self.distance_to_player / 65.0), 0.10, 0.95)
+            self.snd_chase.volume = prox
 
-        # ---- move with obstacle steering
-        to_goal = Vec3(goal.x - self.x, 0, goal.z - self.z)
-        if to_goal.length() > 0.05:
-            d = to_goal.normalized()
-            moved = False
-            for ang in (0, 30, -30, 60, -60, 95, -95):
-                cand = _rot_y(d, ang)
-                hit = raycast(origin=self.world_position + Vec3(0, 0.7, 0),
-                              direction=cand, distance=2.6, ignore=(self, self.root))
-                if not hit.hit:
-                    self.position += cand * self.speed * dt
-                    moved = True
-                    break
-            if not moved:
-                self.position += d * self.speed * 0.35 * dt
-        else:
-            if p.hidden and not self.witnessed:
-                self.search_pos = None                 # lost you - wander
-            elif not p.hidden and not has_los:
-                self.search_pos = Vec3(self.x + random.uniform(-25, 25), 0,
-                                       self.z + random.uniform(-25, 25))
+        # Catch / Jumpscare detection
+        if self.distance_to_player < 1.6 and not self.caught:
+            self.trigger_jumpscare()
 
-        # ---- idle screams when it is close
-        if dist < 30 and self.t > self.next_scream:
-            g.audio.scream.play(volume=clamp(1 - dist / 35.0, 0.15, 0.9))
-            self.next_scream = self.t + random.uniform(6, 13)
+    def trigger_jumpscare(self):
+        self.caught = True
+        if self.snd_chase:
+            self.snd_chase.stop()
+        try:
+            self.snd_jumpscare.play()
+        except Exception:
+            pass
 
-        # ---- visuals: bobbing, glitch jitter, flickering pupils
-        self.root.y = 1.25 + math.sin(self.t * 9) * 0.07
-        self.root.x = random.uniform(-0.05, 0.05) if self.speed > 10 else 0
-        flick = 0.65 + 0.35 * math.sin(self.t * 13)
-        ec = color.rgb(255, int(20 + 40 * flick), int(20 + 40 * flick))
-        self.eye_l.color = ec
-        self.eye_r.color = ec
+        # Snap right in front of camera pivot
+        if self.target and hasattr(self.target, 'camera_pivot'):
+            cam_fwd = self.target.forward
+            self.position = self.target.position + cam_fwd * 1.0 + Vec3(0, 0.3, 0)
+            self.look_at(self.target)
+            self.rotation_y += 180
+
+        if self.on_catch:
+            self.on_catch()
+
+    def destroy_bot(self):
+        if self.snd_chase:
+            self.snd_chase.stop()
+        destroy(self.aura_light)
+        destroy(self)
